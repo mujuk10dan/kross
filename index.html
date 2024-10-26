@@ -5,117 +5,117 @@
   <title>KROSS 원리금수취권증서 파일명 변환</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.3/dist/tesseract.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
   <h1>KROSS 원리금수취권증서 파일명 변환기</h1>
   <input type="file" id="pdfInput" accept="application/pdf" multiple>
+  <button id="downloadZip">ZIP으로 다운로드</button>
   <div id="output"></div>
 
   <script>
     const fileInput = document.getElementById('pdfInput');
+    const downloadZipButton = document.getElementById('downloadZip');
     const resultArea = document.getElementById('output');
 
     let canvas = document.createElement('canvas');
     let ctx = canvas.getContext('2d');
-
-    fileInput.onchange = async (e) => {
-      const files = e.target.files; // 선택된 파일들
-      processFile(files[0]); // 첫 번째 파일부터 처리
+    let zip = new JSZip();
+    let fileCount = 0;
+    let file_name ="";
+    downloadZipButton.onclick = async () => {
+      const files = fileInput.files;
+      resultArea.innerHTML = ''; // 결과 영역 초기화
+      zip = new JSZip(); // ZIP 객체 초기화
+      fileCount = 0; // 파일 카운트 초기화
+      for (const file of files) {
+        await processFile(file);
+      }
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const downloadLink = document.createElement('a');
+      downloadLink.href = URL.createObjectURL(zipBlob);
+      downloadLink.download = file_name+'.zip';
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
     };
 
     async function processFile(file) {
-      const fileReader = new FileReader();
+      return new Promise((resolve) => {
+        const fileReader = new FileReader();
 
-      fileReader.onload = async function () {
-        const typedarray = new Uint8Array(this.result);
+        fileReader.onload = async function () {
+          const typedarray = new Uint8Array(this.result);
+          const pdf = await pdfjsLib.getDocument(typedarray).promise;
+          const page = await pdf.getPage(1); // 첫 페이지 로드
 
-        // PDF.js로 PDF 로드
-        const pdf = await pdfjsLib.getDocument(typedarray).promise;
-        const page = await pdf.getPage(1); // 첫 페이지 로드
+          const viewport = page.getViewport({ scale: 2 });
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
 
-        const viewport = page.getViewport({ scale: 2 }); // 배율 조정
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
+          await page.render({ canvasContext: ctx, viewport }).promise;
 
-        // 페이지 렌더링
-        await page.render({ canvasContext: ctx, viewport }).promise;
+          const coords = "740,276,55,25".split(',').map(Number);
+          const [x, y, width, height] = coords;
 
-        // 지정된 영역의 이미지를 캔버스에서 잘라내기
-        const coords = "740,276,55,25".split(',').map(Number);
-        const [x, y, width, height] = coords;
+          const imageData = ctx.getImageData(x, y, width, height);
+          ctx.putImageData(imageData, 0, 0);
 
-        const imageData = ctx.getImageData(x, y, width, height); // 특정 영역의 이미지 데이터 가져오기
-        ctx.putImageData(imageData, 0, 0); // 해당 영역만 캔버스에 남김
+          Tesseract.recognize(
+            canvas,
+            'kor+eng'
+          ).then(({ data: { words } }) => {
+            let extractedTexts = words.map(word => word.text).join('');
+            let aaa = (extractedTexts.split("증서번호"))[1];
+            let num1 = (aaa.split("보유자"))[0];
 
-        // OCR 수행
-        Tesseract.recognize(
-          canvas,
-          'kor+eng',
-          {
-            // logger: (m) => console.log(m), // 인식 상태 로깅
-          }
-        ).then(({ data: { words } }) => {
-          // 텍스트 결과 출력
-          let extractedTexts = words.map(word => word.text).join('');
-          let aaa = (extractedTexts.split("증서번호"))[1];
-          let num1  = (aaa.split("보유자"))[0];
+            const pageTextContent = page.getTextContent();
+            pageTextContent.then((textContent) => {
+              let pageText = textContent.items.map(item => item.str).join("");
+              pageText = pageText.replace(/\s+/g, '');
+              let temp = (pageText.split("제공할수없습니다."))[1];
+              temp = (temp.split("크로스파이낸스코리아(주)"))[0];
+              let _date = temp.replace(/(\d{4})년(\d{1,2})월(\d{1,2})일/, (match, year, month, day) => {
+                month = month.padStart(2, '0');
+                day = day.padStart(2, '0');
+                return `${year}.${month}.${day}`;
+              });
+              let ttt = "";
+              let num2 = "";
+              let name = (pageText.split("보유자"))[2];
+              name = (name.split("상품번호"))[0];
+              ttt = (pageText.split("호상품명"))[1];
+              ttt = (ttt.split("투자금액"))[0];
+              if (ttt == "카드매출선정산") {
+                ttt = "카드매출 선정산";
+              } else if (ttt == "입금전용계좌선정산") {
+                ttt = "입금전용계좌 선정산";
+              }
+              num2 = (pageText.split("상품번호"))[1];
+              num2 = (num2.split("호상품명"))[0];
+              file_name = name+"_원리금수취권";
+              const fileName = `${name}_${_date}_원리금수취권_증서번호${num1}_${ttt} ${num2}호.pdf`;
+              console.log(fileName);
 
-          // 페이지 텍스트 가져오기
-          const pageTextContent = page.getTextContent();
-          pageTextContent.then((textContent) => {
-            let pageText = textContent.items.map(item => item.str).join("");
-            pageText = pageText.replace(/\s+/g, '');
-            let temp = (pageText.split("제공할수없습니다."))[1];
-            temp = (temp.split("크로스파이낸스코리아(주)"))[0];
-            let _date = temp.replace(/(\d{4})년(\d{1,2})월(\d{1,2})일/, (match, year, month, day) => {
-              // 월과 일을 2자리 형식으로 맞춤
-              month = month.padStart(2, '0');
-              day = day.padStart(2, '0');
-              return `${year}.${month}.${day}`;
+              // PDF Blob 생성
+              const pdfBlob = new Blob([typedarray], { type: 'application/pdf' });
+
+              // ZIP에 파일 추가
+              zip.file(fileName, pdfBlob);
+              fileCount++; // 처리된 파일 수 증가
+
+              // 결과를 출력 영역에 표시
+              resultArea.innerHTML += `${fileCount}/${fileInput.files.length}.   ${fileName}<br><br>`; // 줄바꿈 추가
+              resolve(); // 파일 처리 완료
             });
-            let ttt = "";
-            let num2 = "";
-            let name = (pageText.split("보유자"))[2];
-            name = (name.split("상품번호"))[0];
-            ttt = (pageText.split("호상품명"))[1];
-            ttt = (ttt.split("투자금액"))[0];
-            if(ttt=="카드매출선정산"){
-              ttt="카드매출 선정산";
-            }else if(ttt=="입금전용계좌선정산"){
-              ttt="입금전용계좌 선정산";
-            }
-            num2 = (pageText.split("상품번호"))[1];
-            num2 = (num2.split("호상품명"))[0];
-
-            const fileName = `${name}_${_date}_원리금수취권_증서번호${num1}_${ttt} ${num2}호.pdf`;
-            console.log(fileName);
-
-            // PDF Blob 생성
-            const pdfBlob = new Blob([typedarray], { type: 'application/pdf' });
-
-            // 파일 다운로드
-            const downloadLink = document.createElement('a');
-            downloadLink.href = URL.createObjectURL(pdfBlob);
-            downloadLink.download = fileName;
-            document.body.appendChild(downloadLink);
-            downloadLink.click(); // 다운로드 클릭
-            document.body.removeChild(downloadLink); // 링크 제거
-
-            // 결과를 출력 영역에 표시 (원하는 경우)
-            resultArea.textContent = `${fileName}\n`;
-
-            // 다음 파일 처리
-            const nextFileIndex = Array.from(fileInput.files).indexOf(file) + 1;
-            if (nextFileIndex < fileInput.files.length) {
-              processFile(fileInput.files[nextFileIndex]);
-            }
+          }).catch(err => {
+            console.error('OCR 오류:', err);
+            resolve(); // 오류가 발생해도 다음 파일로 진행
           });
-        }).catch(err => {
-          console.error('OCR 오류:', err);
-        });
-      };
+        };
 
-      fileReader.readAsArrayBuffer(file);
+        fileReader.readAsArrayBuffer(file);
+      });
     }
   </script>
 </body>
