@@ -79,6 +79,11 @@
             name = (name.split("상품번호"))[0];
             ttt = (pageText.split("호상품명"))[1];
             ttt = (ttt.split("투자금액"))[0];
+            if(ttt=="카드매출선정산"){
+              ttt="카드매출 선정산";
+            }else if(ttt=="입금전용계좌선정산"){
+              ttt="입금전용계좌 선정산";
+            }
             num2 = (pageText.split("상품번호"))[1];
             num2 = (num2.split("호상품명"))[0];
 
